@@ -1,5 +1,7 @@
 echo "\e[1;36m Installing zsh \e[0m"
 sudo pacman -Sy zsh
+echo "\e[1;36m Installing neofetch \e[0m"
+sudo pacman -Sy neofetch
 zsh
 chsh -s `which zsh`
 sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
