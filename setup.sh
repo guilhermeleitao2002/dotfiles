@@ -36,3 +36,8 @@ GREP_COLORS='mt=1;36' echo "Installing catppuccin themes"
 yay -Sy catppuccin-gtk-theme-mocha
 GREP_COLORS='mt=1;36' echo "Choose a theme:"
 nwg-look
+
+# Application launcher configuration
+GREP_COLORS='mt=1;36' echo "\n Configuring wofi app launcher"
+stow wofi
+GREP_COLORS='mt=1;36' echo "[+] wofi stowed"
