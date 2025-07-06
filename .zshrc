@@ -105,6 +105,7 @@ source $ZSH/oh-my-zsh.sh
 alias c="clear"
 alias e="exit"
 alias s="source ~/.zshrc"
+alias u="sudo pacman -Syu"
 alias zshrc="nano ~/.zshrc"
 alias hyprland="nano ~/.config/hypr/hyprland.conf"
 
