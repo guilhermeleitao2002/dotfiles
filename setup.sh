@@ -41,3 +41,11 @@ nwg-look
 GREP_COLORS='mt=1;36' echo "\n Configuring wofi app launcher"
 stow wofi
 GREP_COLORS='mt=1;36' echo "[+] wofi stowed"
+
+# Hyprlock configuration
+GREP_COLORS='mt=1;36' echo "\n Configuring hyprlock lockscreen"
+sudo rm -rf ~/.config/hypr/hyprlock.conf
+stow hyprlock
+GREP_COLORS='mt=1;36' echo "[+] hyprlock stowed"
+stow hyprmocha
+GREP_COLORS='mt=1;36' echo "[+] hyprmocha stowed"
