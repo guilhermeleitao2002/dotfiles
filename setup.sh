@@ -28,3 +28,11 @@ killall waybar
 rm ~/.config/waybar/*
 stow waybar
 GREP_COLORS='mt=1;36' echo "[+] waybar stowed"
+
+# GTK apps configuration
+GREP_COLORS='mt=1;36' echo "\n Installing GTK Apps"
+yay -Sy nwg-look
+GREP_COLORS='mt=1;36' echo "Installing catppuccin themes"
+yay -Sy catppuccin-gtk-theme-mocha
+GREP_COLORS='mt=1;36' echo "Choose a theme:"
+nwg-look
