@@ -43,3 +43,10 @@ stow hyprlock
 GREP_COLORS='mt=1;36' echo "[+] hyprlock stowed"
 stow hyprmocha
 GREP_COLORS='mt=1;36' echo "[+] hyprmocha stowed"
+
+# Hyprland overall configuration
+GREP_COLORS='mt=1;36' echo "\n Configuring Hyprland general config"
+sudo rm ~/.config/hypr/hyprland.conf && cp hyprland.conf ~/.config/hypr/
+
+# Apply all changes
+reboot
