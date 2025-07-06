@@ -1,4 +1,4 @@
-GREP_COLORS='mt=1;36' echo "Installing zsh"
+echo "\e[1;36m Installing zsh \e[0m"
 sudo pacman -Sy zsh
 zsh
 chsh -s `which zsh`

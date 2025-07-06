@@ -1,51 +1,51 @@
 # Stow installation
-GREP_COLORS='mt=1;36' echo "Installing GNU stow"
+echo "\e[1;36mInstalling GNU stow\e[0m"
 yay -Sy stow
 
 # Wallpaper configuration
-GREP_COLORS='mt=1;36' echo "\n Installing hyprpaper"
+echo "\e[1;36m \n Installing hyprpaper\e[0m"
 yay -Sy hyprpaper
 stow hyprpaper
-GREP_COLORS='mt=1;36' echo "[+] hyprpaper stowed"
+echo "\e[1;36m [+] hyprpaper stowed\e[0m"
 stow backgrounds
-GREP_COLORS='mt=1;36' echo "[+] backgrounds stowed"
+echo "\e[1;36m [+] backgrounds stowed\e[0m"
 
 # Terminal configuration
-GREP_COLORS='mt=1;36' echo "\n Configuring kitty terminal"
+echo "\e[1;36m \n Configuring kitty terminal\e[0m"
 stow kitty
-GREP_COLORS='mt=1;36' echo "[+] kitty stowed"
+echo "\e[1;36m [+] kitty stowed\e[0m"
 ./zsh_setup.sh # Run separate script
 
 # Status bar configuration
-GREP_COLORS='mt=1;36' echo "\n Configuring waybar status bar"
+echo "\e[1;36m \n Configuring waybar status bar\e[0m"
 killall waybar
 rm ~/.config/waybar/*
 stow waybar
-GREP_COLORS='mt=1;36' echo "[+] waybar stowed"
+echo "\e[1;36m [+] waybar stowed\e[0m"
 
 # GTK apps configuration
-GREP_COLORS='mt=1;36' echo "\n Installing GTK Apps"
+echo "\e[1;36m \n Installing GTK Apps\e[0m"
 yay -Sy nwg-look
-GREP_COLORS='mt=1;36' echo "Installing catppuccin themes"
+echo "\e[1;36mInstalling catppuccin themes\e[0m"
 yay -Sy catppuccin-gtk-theme-mocha
-GREP_COLORS='mt=1;36' echo "Choose a theme:"
+echo "\e[1;36mChoose a theme:\e[0m"
 nwg-look
 
 # Application launcher configuration
-GREP_COLORS='mt=1;36' echo "\n Configuring wofi app launcher"
+echo "\e[1;36m \n Configuring wofi app launcher\e[0m"
 stow wofi
-GREP_COLORS='mt=1;36' echo "[+] wofi stowed"
+echo "\e[1;36m [+] wofi stowed\e[0m"
 
 # Hyprlock configuration
-GREP_COLORS='mt=1;36' echo "\n Configuring hyprlock lockscreen"
+echo "\e[1;36m \n Configuring hyprlock lockscreen\e[0m"
 sudo rm -rf ~/.config/hypr/hyprlock.conf
 stow hyprlock
-GREP_COLORS='mt=1;36' echo "[+] hyprlock stowed"
+echo "\e[1;36m [+] hyprlock stowed\e[0m"
 stow hyprmocha
-GREP_COLORS='mt=1;36' echo "[+] hyprmocha stowed"
+echo "\e[1;36m [+] hyprmocha stowed\e[0m"
 
 # Hyprland overall configuration
-GREP_COLORS='mt=1;36' echo "\n Configuring Hyprland general config"
+echo "\e[1;36m \n Configuring Hyprland general config\e[0m"
 sudo rm ~/.config/hypr/hyprland.conf && cp hyprland.conf ~/.config/hypr/
 
 # Apply all changes
