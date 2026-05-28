@@ -109,6 +109,9 @@ alias u="sudo pacman -Syu"
 alias zshrc="nano ~/.zshrc"
 alias hyprland="nano ~/.config/hypr/hyprland.conf"
 
+# Make dotfiles scripts callable from anywhere
+export PATH="$HOME/dotfiles/scripts:$PATH"
+
 
 # Personalization
 echo ""

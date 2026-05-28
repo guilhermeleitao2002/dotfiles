@@ -109,6 +109,9 @@ alias u="sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y"
 alias zshrc="nano ~/.zshrc"
 alias install="sudo apt install -y"
 
+# Make dotfiles scripts callable from anywhere
+export PATH="$HOME/dotfiles/scripts:$PATH"
+
 # Personalization
 echo ""
 fastfetch
