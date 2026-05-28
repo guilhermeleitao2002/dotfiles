@@ -122,7 +122,15 @@ ok "System packages up to date"
 
 # ─── 2. install base packages from official repos ────────────────────────────
 step 2 "Installing base packages"
-BASE_PKGS=(git base-devel stow zsh fastfetch curl wget)
+BASE_PKGS=(
+  # tools this script itself needs
+  git base-devel stow zsh fastfetch curl wget
+  # handy CLI extras you'll inevitably want on a fresh box
+  tree htop btop neovim tmux unzip zip
+  ripgrep fd bat eza fzf jq
+  github-cli openssh man-db less
+  python-pip
+)
 sudo pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 ok "Installed: ${BASE_PKGS[*]}"
 
@@ -139,7 +147,7 @@ else
   ok "yay installed"
 fi
 
-# ─── 4. install Hyprland desktop ecosystem ───────────────────────────────────
+# ─── 4. install Hyprland desktop ecosystem + handy GUI apps ──────────────────
 step 4 "Installing Hyprland desktop ecosystem"
 DESKTOP_PKGS=(
   hyprland hyprpaper hyprlock          # window manager + wallpaper + lockscreen
@@ -148,9 +156,14 @@ DESKTOP_PKGS=(
   nwg-look                             # GTK theme picker
   catppuccin-gtk-theme-mocha           # GTK theme (AUR)
   ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji  # fonts for waybar/kitty
+  # handy GUI apps you'll inevitably want
+  firefox                              # web browser
+  thunar                               # file manager
+  vlc                                  # media player
+  discord                              # chat
 )
 yay -S --needed --noconfirm "${DESKTOP_PKGS[@]}"
-ok "Installed: hyprland kitty waybar wofi hyprpaper hyprlock nwg-look + Catppuccin + fonts"
+ok "Installed: hyprland kitty waybar wofi hyprpaper hyprlock nwg-look + Catppuccin + fonts + firefox/thunar/vlc/discord"
 
 # ─── 5. install Oh My Zsh + plugins ──────────────────────────────────────────
 step 5 "Installing Oh My Zsh and plugins"

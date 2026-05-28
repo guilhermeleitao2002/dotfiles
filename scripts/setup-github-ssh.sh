@@ -39,6 +39,8 @@ NO_PASSPHRASE=false
 ADD_SIGNING_KEY=false
 FORCE=false
 SKIP_VERIFY=false
+NO_INSTALL=false
+ASSUME_YES=false
 
 usage() {
   cat <<EOF
@@ -57,6 +59,8 @@ ${BOLD}usage:${RESET} $(basename "$0") [options]
                              (in addition to the default auth key).
       --force                Overwrite an existing key file without asking.
       --skip-verify          Don't try 'ssh -T git@github.com' at the end.
+      --no-install           Don't try to install missing tools — just fail.
+  -y, --yes                  Skip the install confirmation prompt.
 
   -h, --help                 Show this help and exit.
 EOF
@@ -72,6 +76,8 @@ while [[ $# -gt 0 ]]; do
        --signing-key)  ADD_SIGNING_KEY=true; shift ;;
        --force)        FORCE=true; shift ;;
        --skip-verify)  SKIP_VERIFY=true; shift ;;
+       --no-install)   NO_INSTALL=true; shift ;;
+    -y|--yes)          ASSUME_YES=true; shift ;;
     -h|--help)         usage; exit 0 ;;
     *)                 printf '%sunknown option:%s %s\n' "$RED" "$RESET" "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -97,29 +103,115 @@ TOTAL_STEPS=6
 # ─── 1. tooling present ──────────────────────────────────────────────────────
 step 1 "Checking required tools"
 
+# ── package-manager auto-install ─────────────────────────────────────────────
+PKG_MGR=""
+detect_pkg_mgr() {
+  if   command -v pacman  >/dev/null; then PKG_MGR=pacman
+  elif command -v apt-get >/dev/null; then PKG_MGR=apt
+  elif command -v dnf     >/dev/null; then PKG_MGR=dnf
+  elif command -v zypper  >/dev/null; then PKG_MGR=zypper
+  elif command -v brew    >/dev/null; then PKG_MGR=brew
+  else PKG_MGR=""
+  fi
+}
+
+# Map a missing tool name → the package name for the detected manager.
+pkg_for() {
+  local tool="$1"
+  case "$PKG_MGR:$tool" in
+    pacman:ssh|pacman:ssh-keygen) echo openssh ;;
+    apt:ssh|apt:ssh-keygen)       echo openssh-client ;;
+    dnf:ssh|dnf:ssh-keygen)       echo openssh-clients ;;
+    zypper:ssh|zypper:ssh-keygen) echo openssh-clients ;;
+    brew:ssh|brew:ssh-keygen)     echo openssh ;;
+    pacman:gh)                    echo github-cli ;;
+    *:*)                          echo "$tool" ;;
+  esac
+}
+
+SUDO=""
+need_sudo() {
+  [[ "$PKG_MGR" == "brew" || $EUID -eq 0 ]] && { SUDO=""; return; }
+  if command -v sudo >/dev/null; then SUDO="sudo"
+  else die "Need root to install packages but 'sudo' isn't installed. Re-run as root or install sudo."
+  fi
+}
+
+install_packages() {
+  local pkgs=("$@")
+  need_sudo
+  case "$PKG_MGR" in
+    pacman) $SUDO pacman -S --needed --noconfirm "${pkgs[@]}" ;;
+    apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y "${pkgs[@]}" ;;
+    dnf)    $SUDO dnf install -y "${pkgs[@]}" ;;
+    zypper) $SUDO zypper --non-interactive install "${pkgs[@]}" ;;
+    brew)   brew install "${pkgs[@]}" ;;
+    *)      return 1 ;;
+  esac
+}
+
+REQUIRED=(ssh-keygen ssh gh git)
 MISSING=()
-for cmd in ssh-keygen ssh; do
+for cmd in "${REQUIRED[@]}"; do
   command -v "$cmd" >/dev/null || MISSING+=("$cmd")
 done
-((${#MISSING[@]} == 0)) || die "Missing required tools: ${MISSING[*]} — install openssh and re-run."
-ok "openssh available ($(ssh -V 2>&1))"
 
-if ! command -v gh >/dev/null; then
-  printf '\n%s✗%s GitHub CLI ('gh') is not installed.\n' "$RED" "$RESET" >&2
-  cat >&2 <<EOF
+if (( ${#MISSING[@]} > 0 )); then
+  detect_pkg_mgr
+  if [[ -z "$PKG_MGR" ]]; then
+    printf '\n%s✗%s Missing tools and no known package manager (pacman/apt/dnf/zypper/brew) detected.\n' "$RED" "$RESET" >&2
+    printf '  Required: %s\n' "${MISSING[*]}" >&2
+    exit 1
+  fi
+  if [[ "$NO_INSTALL" == "true" ]]; then
+    die "Missing tools (${MISSING[*]}) but --no-install was set."
+  fi
 
-  Install it, then re-run this script:
+  # Dedup packages (ssh + ssh-keygen → same package).
+  declare -A SEEN=()
+  TO_INSTALL=()
+  for t in "${MISSING[@]}"; do
+    pkg="$(pkg_for "$t")"
+    if [[ -z "${SEEN[$pkg]:-}" ]]; then
+      SEEN[$pkg]=1
+      TO_INSTALL+=("$pkg")
+    fi
+  done
 
-    ${BOLD}Arch / Manjaro${RESET}      sudo pacman -S github-cli
-    ${BOLD}Debian / Ubuntu${RESET}     sudo apt install gh
-                          (or follow https://cli.github.com/manual/installation)
-    ${BOLD}Fedora${RESET}              sudo dnf install gh
-    ${BOLD}macOS (Homebrew)${RESET}    brew install gh
+  info "Detected package manager: ${BOLD}${PKG_MGR}${RESET}"
+  warn "Missing tools: ${MISSING[*]}"
+  info "Will install: ${BOLD}${TO_INSTALL[*]}${RESET}"
+
+  if [[ "$ASSUME_YES" != "true" ]]; then
+    read -r -p "  Proceed with install? [Y/n] " ans
+    case "${ans,,}" in
+      n|no) die "Aborted — install the listed tools manually and re-run." ;;
+    esac
+  fi
+
+  if ! install_packages "${TO_INSTALL[@]}"; then
+    warn "Package install command exited non-zero — some tools may still be missing."
+    if [[ "$PKG_MGR" == "apt" ]] && [[ " ${TO_INSTALL[*]} " == *" gh "* ]]; then
+      cat >&2 <<EOF
+
+  ${YELLOW}Note:${RESET} on older Debian/Ubuntu releases, 'gh' isn't in the default repos.
+  Follow the official instructions to add the GitHub CLI apt repo:
+
+    https://cli.github.com/manual/installation
 
 EOF
-  exit 1
+    fi
+  fi
+
+  STILL_MISSING=()
+  for cmd in "${REQUIRED[@]}"; do
+    command -v "$cmd" >/dev/null || STILL_MISSING+=("$cmd")
+  done
+  (( ${#STILL_MISSING[@]} == 0 )) || die "Still missing after install: ${STILL_MISSING[*]}"
 fi
+ok "openssh available ($(ssh -V 2>&1))"
 ok "gh available ($(gh --version | head -n1))"
+ok "git available ($(git --version))"
 
 # ─── 2. gh authentication ─────────────────────────────────────────────────────
 step 2 "Checking GitHub CLI authentication"

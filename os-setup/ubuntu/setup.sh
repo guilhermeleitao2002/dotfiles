@@ -87,15 +87,41 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get autoremove -y -qq
 ok "System packages up to date"
 
-# ─── 2. install base packages ─────────────────────────────────────────────────
-step 2 "Installing base packages"
-PKGS=(zsh git curl wget ca-certificates)
+# ─── 2. install base packages + handy CLI extras ─────────────────────────────
+step 2 "Installing base packages and handy CLI extras"
+
+# Filter requested list against apt's catalog: older Ubuntu releases may not
+# carry every package (e.g. btop is 22.04+). We install whatever is available
+# and warn about the rest rather than failing the whole step.
+PKGS_REQUESTED=(
+  # tools this script itself needs
+  zsh git curl wget ca-certificates
+  # handy CLI extras you'll inevitably want on a fresh box
+  tree htop btop neovim tmux unzip zip
+  ripgrep fd-find bat jq
+  openssh-client less man-db
+  build-essential python3-pip
+)
+PKGS=()
+SKIPPED=()
+for p in "${PKGS_REQUESTED[@]}"; do
+  if apt-cache show "$p" >/dev/null 2>&1; then
+    PKGS+=("$p")
+  else
+    SKIPPED+=("$p")
+  fi
+done
+(( ${#SKIPPED[@]} > 0 )) && warn "Not in apt on this release, skipping: ${SKIPPED[*]}"
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PKGS[@]}"
 ok "Installed: ${PKGS[*]}"
 
-# ─── 3. install fastfetch (with PPA fallback for older Ubuntu) ───────────────
-step 3 "Installing fastfetch"
-if apt-cache show fastfetch >/dev/null 2>&1; then
+# ─── 3. install fastfetch + gh (with repo fallbacks for older Ubuntu) ────────
+step 3 "Installing fastfetch and gh"
+
+# fastfetch — fall back to its PPA on older Ubuntu.
+if command -v fastfetch >/dev/null; then
+  ok "fastfetch already installed"
+elif apt-cache show fastfetch >/dev/null 2>&1; then
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fastfetch
   ok "fastfetch installed from apt"
 else
@@ -105,6 +131,25 @@ else
   sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fastfetch
   ok "fastfetch installed via PPA"
+fi
+
+# gh — fall back to the official GitHub CLI apt repo on older Ubuntu.
+if command -v gh >/dev/null; then
+  ok "gh already installed"
+elif apt-cache show gh >/dev/null 2>&1; then
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gh
+  ok "gh installed from apt"
+else
+  info "gh not in apt repos; adding the official GitHub CLI apt source"
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+  sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gh
+  ok "gh installed via official GitHub CLI apt repo"
 fi
 
 # ─── 4. install Oh My Zsh (unattended, idempotent) ───────────────────────────
