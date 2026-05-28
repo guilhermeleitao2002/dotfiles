@@ -52,132 +52,64 @@ Run `setup.sh --help` for the full flag list.
 
 ## 🖥 Arch Linux Setup
 
-## 📋 Setup Overview
-
-The script `setup.sh` performs the following tasks:
-
-* Installs required packages (via `yay`)
-* Stows and applies personal configurations using GNU `stow`
-* Sets up wallpaper, terminal, GTK themes, status bar, application launcher, lockscreen, and Hyprland configuration
-* Applies visual theming using [Catppuccin](https://github.com/catppuccin)
-
----
-
-## 🧰 Requirements
-
-Make sure you have the following tools and prerequisites installed:
-
-* [yay](https://github.com/Jguer/yay): AUR helper for package management
-* [stow](https://www.gnu.org/software/stow/): For managing dotfiles via symlinks
-* A Hyprland-compatible Wayland environment
-* A working internet connection
-
----
-
-## 📂 Directory Structure
-
-Your dotfiles repository should include the following folders:
-
-```
-.
-├── backgrounds/
-├── hyprlock/
-├── hyprmocha/
-├── hyprpaper/
-├── kitty/
-├── waybar/
-├── wofi/
-├── .zshrc
-├── zsh_setup.sh
-├── setup.sh
-└── hyprland.conf
-```
-
----
-
-## 🚀 What the Script Does
-
-### 1. **Stow & Install Base Tools**
+One command on a fresh Arch install:
 
 ```bash
-yay -Sy stow
+git clone https://github.com/<you>/dotfiles ~/dotfiles
+~/dotfiles/arch/setup.sh
 ```
 
-Installs GNU `stow` to manage symlinks of your configuration files.
+The script (`arch/setup.sh`) is **idempotent**. It only prompts for your sudo password once at the start, and (optionally) at the end for the GTK theme picker and reboot.
 
-### 2. **Wallpaper Setup**
+### 📋 What it does
+
+1. Runs a full `pacman -Syu` (no partial-upgrade footguns).
+2. Installs base packages from the official repos: `git base-devel stow zsh fastfetch curl wget`.
+3. Bootstraps `yay` from the AUR if it isn't already installed.
+4. Installs the full Hyprland desktop ecosystem and theming:
+   * **Window manager / wallpaper / lockscreen** — `hyprland`, `hyprpaper`, `hyprlock`
+   * **Status bar / launcher / terminal** — `waybar`, `wofi`, `kitty`
+   * **GTK theming** — `nwg-look`, `catppuccin-gtk-theme-mocha` (AUR)
+   * **Fonts** — `ttf-jetbrains-mono-nerd`, `noto-fonts`, `noto-fonts-emoji`
+5. Installs [Oh My Zsh](https://ohmyz.sh/) unattended, plus [`zsh-autosuggestions`](https://github.com/zsh-users/zsh-autosuggestions) and [`zsh-syntax-highlighting`](https://github.com/zsh-users/zsh-syntax-highlighting).
+6. Stows every dotfile package into `$HOME` via GNU `stow`. Conflicting real files are moved to `<file>.backup.<timestamp>` first, so existing configs are preserved.
+7. Adds `zsh` to `/etc/shells` if missing and sets it as your default login shell.
+8. Optionally launches `nwg-look` for the GTK theme picker, then optionally reboots — both prompt, both can be skipped with flags.
+
+### 🧩 Flags
 
 ```bash
-yay -Sy hyprpaper
-stow hyprpaper
-stow backgrounds
+arch/setup.sh --help
 ```
 
-Installs `hyprpaper` and applies wallpaper-related configuration using `stow`.
+The most common ones:
 
-### 3. **Kitty Terminal Configuration**
+| Flag | Effect |
+| --- | --- |
+| `-f, --filesystems "<a,b,c>"` | Override the default WSL/LVM `df -h` patterns in the bundled `.zshrc` (see [Ubuntu section](#-personalizing-the-disk-info-block) — same semantics). |
+| `--no-disk-info` | Strip the `df -h` lines from `.zshrc` entirely. |
+| `--skip-theme-gui` | Don't launch the interactive `nwg-look` GTK picker. |
+| `--no-reboot` | Don't prompt to reboot at the end. |
 
-```bash
-stow kitty
-./zsh_setup.sh
+### 📂 Directory Structure
+
+The repo layout under `arch/`:
+
+```
+arch/
+├── setup.sh             # the bootstrap script
+├── .zshrc               # copied to ~/.zshrc (with backup)
+├── backgrounds/         # stow: ~/.config/backgrounds/
+├── hyprland/            # stow: ~/.config/hypr/hyprland.conf
+├── hyprlock/            # stow: ~/.config/hypr/hyprlock.conf
+├── hyprmocha/           # stow: ~/.config/hypr/mocha.conf
+├── hyprpaper/           # stow: ~/.config/hypr/hyprpaper.conf
+├── kitty/               # stow: ~/.config/kitty/
+├── waybar/              # stow: ~/.config/waybar/
+└── wofi/                # stow: ~/.config/wofi/
 ```
 
-Applies terminal settings and runs a separate ZSH setup script.
-
-### 4. **Waybar Status Bar Configuration**
-
-```bash
-killall waybar
-rm ~/.config/waybar/*
-stow waybar
-```
-
-Kills any running Waybar instances, clears old configs, and applies your custom config.
-
-### 5. **GTK Application Theming**
-
-```bash
-yay -Sy nwg-look
-yay -Sy catppuccin-gtk-theme-mocha
-nwg-look
-```
-
-Installs a GTK theme selector and Catppuccin Mocha GTK theme. Launches `nwg-look` for manual theme selection.
-
-### 6. **Wofi App Launcher Setup**
-
-```bash
-stow wofi
-```
-
-Applies configuration for Wofi, a Wayland-native application launcher.
-
-### 7. **Hyprlock Lockscreen Setup**
-
-```bash
-sudo rm -rf ~/.config/hypr/hyprlock.conf
-stow hyprlock
-stow hyprmocha
-```
-
-Removes old Hyprlock config, applies new settings and Catppuccin-inspired themes.
-
-### 8. **Hyprland Configuration**
-
-```bash
-sudo rm ~/.config/hypr/hyprland.conf
-cp hyprland.conf ~/.config/hypr/
-```
-
-Applies the main Hyprland configuration file directly.
-
-### 9. **Reboot**
-
-```bash
-reboot
-```
-
-Reboots the system to apply all changes.
+Every Hyprland-related config is now a proper stow package, so editing the symlink at `~/.config/hypr/hyprland.conf` edits the file in the repo directly — no more drift between your live config and your dotfiles.
 
 ---
 
