@@ -8,7 +8,7 @@ export ZSH="$HOME/.oh-my-zsh"
 # load a random theme each time Oh My Zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="aussiegeek"
+ZSH_THEME="jonathan"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -105,13 +105,13 @@ source $ZSH/oh-my-zsh.sh
 alias c="clear"
 alias e="exit"
 alias s="source ~/.zshrc"
-alias u="sudo pacman -Syu"
+alias u="sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y"
 alias zshrc="nano ~/.zshrc"
-
+alias install="sudo apt install -y"
 
 # Personalization
 echo ""
-neofetch --cpu_speed on --cpu_temp C --disk_percent on
+fastfetch
 df -h | GREP_COLORS='mt=1;36' grep "Filesystem                     Size  Used Avail Use% Mounted on"
 df -h | GREP_COLORS='mt=1;36' grep "/dev/mapper/volgroup0-lv_root"
 df -h | GREP_COLORS='mt=1;36' grep "/dev/mapper/volgroup0-lv_home"
