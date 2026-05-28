@@ -14,7 +14,7 @@ Pick the section that matches the box you're on.
 One command on a fresh Ubuntu install:
 
 ```bash
-git clone https://github.com/<you>/dotfiles ~/dotfiles
+git clone https://github.com/guilhermeleitao2002/dotfiles ~/dotfiles
 ~/dotfiles/ubuntu/setup.sh
 ```
 
