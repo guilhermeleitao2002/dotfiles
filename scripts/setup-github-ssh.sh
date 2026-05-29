@@ -3,33 +3,74 @@
 # Generate an SSH key on this machine and register it with GitHub via the gh CLI.
 # Safe to re-run.
 
+# ─── ensure a capable bash ─────────────────────────────────────────────────────
+# macOS still ships bash 3.2; this script uses associative arrays, mapfile and
+# ${var,,}, all of which need bash >= 4. Re-exec under a newer bash if we can
+# find one, otherwise fail with a clear hint.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _bash in /opt/homebrew/bin/bash /usr/local/bin/bash /usr/bin/bash bash; do
+    _bash="$(command -v "$_bash" 2>/dev/null)" || continue
+    [ -x "$_bash" ] || continue
+    _ver="$("$_bash" -c 'printf %s "${BASH_VERSINFO:-0}"' 2>/dev/null)"
+    case "$_ver" in ''|*[!0-9]*) continue ;; esac
+    [ "$_ver" -ge 4 ] && exec "$_bash" "$0" "$@"
+  done
+  echo "error: this script requires bash >= 4 (found ${BASH_VERSION:-non-bash}). Install a newer bash, e.g. 'brew install bash'." >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # ─── pretty output ────────────────────────────────────────────────────────────
 BOLD=$'\e[1m'; DIM=$'\e[2m'; RESET=$'\e[0m'
 CYAN=$'\e[1;36m'; GREEN=$'\e[1;32m'; YELLOW=$'\e[1;33m'; RED=$'\e[1;31m'; MAGENTA=$'\e[1;35m'
 
-step()  { printf '\n%s==>%s %s[%d/%d]%s %s%s%s\n' "$CYAN" "$RESET" "$DIM" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
-ok()    { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1"; }
-info()  { printf '  %s·%s %s\n' "$DIM" "$RESET" "$1"; }
-warn()  { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"; }
-die()   { printf '\n%s✗%s %s\n' "$RED" "$RESET" "$1" >&2; exit 1; }
+# Use UTF-8 glyphs only when the locale can render them; fall back to ASCII so
+# output stays readable on a box whose locale is still C/POSIX (common on a
+# fresh install before locales are generated).
+if printf '%s' "${LC_ALL:-}${LC_CTYPE:-}${LANG:-}" | grep -qiE 'utf-?8'; then
+  UNICODE=true
+  G_OK='✓'; G_INFO='·'; G_WARN='!'; G_ERR='✗'; G_ARROW='==>'
+else
+  UNICODE=false
+  G_OK='+'; G_INFO='-'; G_WARN='!'; G_ERR='x'; G_ARROW='==>'
+fi
+
+step()  { printf '\n%s%s%s %s[%d/%d]%s %s%s%s\n' "$CYAN" "$G_ARROW" "$RESET" "$DIM" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
+ok()    { printf '  %s%s%s %s\n' "$GREEN" "$G_OK" "$RESET" "$1"; }
+info()  { printf '  %s%s%s %s\n' "$DIM" "$G_INFO" "$RESET" "$1"; }
+warn()  { printf '  %s%s%s %s\n' "$YELLOW" "$G_WARN" "$RESET" "$1"; }
+die()   { printf '\n%s%s%s %s\n' "$RED" "$G_ERR" "$RESET" "$1" >&2; exit 1; }
 
 banner() {
   printf '\n%s' "$MAGENTA"
-  cat <<'EOF'
+  if [[ "$UNICODE" == true ]]; then
+    cat <<'EOF'
   ╭─────────────────────────────────────────────╮
   │   gleitao · github ssh key bootstrap        │
   ╰─────────────────────────────────────────────╯
 EOF
+  else
+    cat <<'EOF'
+  +---------------------------------------------+
+  |   gleitao - github ssh key bootstrap        |
+  +---------------------------------------------+
+EOF
+  fi
   printf '%s\n' "$RESET"
 }
 
 TOTAL_STEPS=6
 
 # ─── defaults & argument parsing ──────────────────────────────────────────────
-HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
-DEFAULT_TITLE="${USER}@${HOSTNAME_SHORT}"
+# Derive a short hostname/user without relying on the `hostname` binary, which
+# isn't installed by default on minimal systems (e.g. fresh Arch). uname is part
+# of coreutils and is always present; $HOSTNAME is empty in non-interactive bash.
+HOSTNAME_SHORT="${HOSTNAME:-}"
+[[ -n "$HOSTNAME_SHORT" ]] || HOSTNAME_SHORT="$(uname -n 2>/dev/null || echo localhost)"
+HOSTNAME_SHORT="${HOSTNAME_SHORT%%.*}"
+USER_NAME="${USER:-$(id -un 2>/dev/null || echo user)}"
+DEFAULT_TITLE="${USER_NAME}@${HOSTNAME_SHORT}"
 
 KEY_TYPE="ed25519"
 KEY_FILE=""
@@ -52,7 +93,7 @@ ${BOLD}usage:${RESET} $(basename "$0") [options]
                              (default: "${DEFAULT_TITLE}").
   -e, --email <addr>         Email used as the key comment
                              (default: git config user.email, else
-                             "${USER}@${HOSTNAME_SHORT}").
+                             "${USER_NAME}@${HOSTNAME_SHORT}").
       --no-passphrase        Generate the key with an empty passphrase
                              (default: ssh-keygen prompts interactively).
       --signing-key          Also register the key as a GitHub signing key
@@ -132,8 +173,9 @@ pkg_for() {
 SUDO=""
 need_sudo() {
   [[ "$PKG_MGR" == "brew" || $EUID -eq 0 ]] && { SUDO=""; return; }
-  if command -v sudo >/dev/null; then SUDO="sudo"
-  else die "Need root to install packages but 'sudo' isn't installed. Re-run as root or install sudo."
+  if   command -v sudo >/dev/null; then SUDO="sudo"
+  elif command -v doas >/dev/null; then SUDO="doas"
+  else die "Need root to install packages but neither 'sudo' nor 'doas' is installed. Re-run as root or install one."
   fi
 }
 
@@ -159,7 +201,7 @@ done
 if (( ${#MISSING[@]} > 0 )); then
   detect_pkg_mgr
   if [[ -z "$PKG_MGR" ]]; then
-    printf '\n%s✗%s Missing tools and no known package manager (pacman/apt/dnf/zypper/brew) detected.\n' "$RED" "$RESET" >&2
+    printf '\n%s%s%s Missing tools and no known package manager (pacman/apt/dnf/zypper/brew) detected.\n' "$RED" "$G_ERR" "$RESET" >&2
     printf '  Required: %s\n' "${MISSING[*]}" >&2
     exit 1
   fi
@@ -221,7 +263,7 @@ if AUTH_STATUS="$(gh auth status 2>&1)"; then
   GH_USER="$(gh api user --jq .login 2>/dev/null || echo 'unknown')"
   ok "Authenticated as ${BOLD}${GH_USER}${RESET}"
 else
-  printf '\n%s✗%s You are not signed in to GitHub via the gh CLI.\n\n' "$RED" "$RESET" >&2
+  printf '\n%s%s%s You are not signed in to GitHub via the gh CLI.\n\n' "$RED" "$G_ERR" "$RESET" >&2
   cat >&2 <<EOF
   Run:
 
@@ -273,7 +315,7 @@ if [[ ! -e "$KEY_FILE" ]]; then
   # Resolve the email used as the key comment.
   if [[ -z "$KEY_EMAIL" ]]; then
     KEY_EMAIL="$(git config --get user.email 2>/dev/null || true)"
-    [[ -n "$KEY_EMAIL" ]] || KEY_EMAIL="${USER}@${HOSTNAME_SHORT}"
+    [[ -n "$KEY_EMAIL" ]] || KEY_EMAIL="${USER_NAME}@${HOSTNAME_SHORT}"
   fi
 
   KEYGEN_ARGS=(-t "$KEY_TYPE" -f "$KEY_FILE" -C "$KEY_EMAIL")
@@ -380,9 +422,15 @@ else
 fi
 
 # ─── done ────────────────────────────────────────────────────────────────────
-printf '\n%s╭─────────────────────────────────────────────╮%s\n' "$GREEN" "$RESET"
-printf '%s│              all done — enjoy!              │%s\n' "$GREEN" "$RESET"
-printf '%s╰─────────────────────────────────────────────╯%s\n\n' "$GREEN" "$RESET"
+if [[ "$UNICODE" == true ]]; then
+  printf '\n%s╭─────────────────────────────────────────────╮%s\n' "$GREEN" "$RESET"
+  printf '%s│              all done — enjoy!              │%s\n' "$GREEN" "$RESET"
+  printf '%s╰─────────────────────────────────────────────╯%s\n\n' "$GREEN" "$RESET"
+else
+  printf '\n%s+---------------------------------------------+%s\n' "$GREEN" "$RESET"
+  printf '%s|              all done - enjoy!              |%s\n' "$GREEN" "$RESET"
+  printf '%s+---------------------------------------------+%s\n\n' "$GREEN" "$RESET"
+fi
 
 printf '  Key file       : %s\n' "$KEY_FILE"
 printf '  Public key     : %s\n' "$PUB_FILE"

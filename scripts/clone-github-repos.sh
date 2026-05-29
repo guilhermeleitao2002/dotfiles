@@ -6,25 +6,60 @@
 # Companion to ./setup-github-ssh.sh — if SSH access is not yet working,
 # this script will offer to run that one for you.
 
+# ─── ensure a capable bash ─────────────────────────────────────────────────────
+# macOS still ships bash 3.2; this script uses associative arrays, mapfile and
+# ${var,,}, all of which need bash >= 4. Re-exec under a newer bash if we can
+# find one, otherwise fail with a clear hint.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _bash in /opt/homebrew/bin/bash /usr/local/bin/bash /usr/bin/bash bash; do
+    _bash="$(command -v "$_bash" 2>/dev/null)" || continue
+    [ -x "$_bash" ] || continue
+    _ver="$("$_bash" -c 'printf %s "${BASH_VERSINFO:-0}"' 2>/dev/null)"
+    case "$_ver" in ''|*[!0-9]*) continue ;; esac
+    [ "$_ver" -ge 4 ] && exec "$_bash" "$0" "$@"
+  done
+  echo "error: this script requires bash >= 4 (found ${BASH_VERSION:-non-bash}). Install a newer bash, e.g. 'brew install bash'." >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # ─── pretty output ────────────────────────────────────────────────────────────
 BOLD=$'\e[1m'; DIM=$'\e[2m'; RESET=$'\e[0m'
 CYAN=$'\e[1;36m'; GREEN=$'\e[1;32m'; YELLOW=$'\e[1;33m'; RED=$'\e[1;31m'; MAGENTA=$'\e[1;35m'; BLUE=$'\e[1;34m'
 
-step()  { printf '\n%s==>%s %s[%d/%d]%s %s%s%s\n' "$CYAN" "$RESET" "$DIM" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
-ok()    { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1"; }
-info()  { printf '  %s·%s %s\n' "$DIM" "$RESET" "$1"; }
-warn()  { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"; }
-die()   { printf '\n%s✗%s %s\n' "$RED" "$RESET" "$1" >&2; exit 1; }
+# Use UTF-8 glyphs only when the locale can render them; fall back to ASCII so
+# output stays readable on a box whose locale is still C/POSIX (common on a
+# fresh install before locales are generated).
+if printf '%s' "${LC_ALL:-}${LC_CTYPE:-}${LANG:-}" | grep -qiE 'utf-?8'; then
+  UNICODE=true
+  G_OK='✓'; G_INFO='·'; G_WARN='!'; G_ERR='✗'; G_ARROW='==>'; G_STAR='⭐'
+else
+  UNICODE=false
+  G_OK='+'; G_INFO='-'; G_WARN='!'; G_ERR='x'; G_ARROW='==>'; G_STAR='*'
+fi
+
+step()  { printf '\n%s%s%s %s[%d/%d]%s %s%s%s\n' "$CYAN" "$G_ARROW" "$RESET" "$DIM" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
+ok()    { printf '  %s%s%s %s\n' "$GREEN" "$G_OK" "$RESET" "$1"; }
+info()  { printf '  %s%s%s %s\n' "$DIM" "$G_INFO" "$RESET" "$1"; }
+warn()  { printf '  %s%s%s %s\n' "$YELLOW" "$G_WARN" "$RESET" "$1"; }
+die()   { printf '\n%s%s%s %s\n' "$RED" "$G_ERR" "$RESET" "$1" >&2; exit 1; }
 
 banner() {
   printf '\n%s' "$MAGENTA"
-  cat <<'EOF'
+  if [[ "$UNICODE" == true ]]; then
+    cat <<'EOF'
   ╭─────────────────────────────────────────────╮
   │   gleitao · github repo clone helper        │
   ╰─────────────────────────────────────────────╯
 EOF
+  else
+    cat <<'EOF'
+  +---------------------------------------------+
+  |   gleitao - github repo clone helper        |
+  +---------------------------------------------+
+EOF
+  fi
   printf '%s\n' "$RESET"
 }
 
@@ -141,8 +176,9 @@ pkg_for() {
 SUDO=""
 need_sudo() {
   [[ "$PKG_MGR" == "brew" || $EUID -eq 0 ]] && { SUDO=""; return; }
-  if command -v sudo >/dev/null; then SUDO="sudo"
-  else die "Need root to install packages but 'sudo' isn't installed. Re-run as root or install sudo."
+  if   command -v sudo >/dev/null; then SUDO="sudo"
+  elif command -v doas >/dev/null; then SUDO="doas"
+  else die "Need root to install packages but neither 'sudo' nor 'doas' is installed. Re-run as root or install one."
   fi
 }
 
@@ -173,7 +209,7 @@ fi
 if (( ${#MISSING_REQUIRED[@]} + ${#MISSING_OPTIONAL[@]} > 0 )); then
   detect_pkg_mgr
   if [[ -z "$PKG_MGR" ]]; then
-    printf '\n%s✗%s Missing tools and no known package manager (pacman/apt/dnf/zypper/brew) detected.\n' "$RED" "$RESET" >&2
+    printf '\n%s%s%s Missing tools and no known package manager (pacman/apt/dnf/zypper/brew) detected.\n' "$RED" "$G_ERR" "$RESET" >&2
     printf '  Required: %s\n' "${MISSING_REQUIRED[*]:-none}" >&2
     (( ${#MISSING_OPTIONAL[@]} )) && printf '  Optional: %s\n' "${MISSING_OPTIONAL[*]}" >&2
     exit 1
@@ -240,7 +276,7 @@ fi
 
 # Probe with an actual API call — auth status alone can lie about expired tokens.
 if ! GH_USER="$(gh api user --jq .login 2>/dev/null)"; then
-  printf '\n%s✗%s gh is not authenticated (or the active token is invalid).\n\n' "$RED" "$RESET" >&2
+  printf '\n%s%s%s gh is not authenticated (or the active token is invalid).\n\n' "$RED" "$G_ERR" "$RESET" >&2
   if [[ "$ASSUME_YES" == "true" ]]; then
     die "Non-interactive run: refusing to launch 'gh auth login'. Authenticate first."
   fi
@@ -368,7 +404,7 @@ DISPLAY_LINES=()
 for i in "${!REPO_LINES[@]}"; do
   IFS=$'\t' read -r name _ssh _https vis lang stars updated desc <<<"${REPO_LINES[$i]}"
   idx=$(printf '%3d' $((i+1)))
-  meta="$(printf '%s · %s · ⭐%s · %s' "$vis" "$lang" "$stars" "$updated")"
+  meta="$(printf '%s · %s · %s%s · %s' "$vis" "$lang" "$G_STAR" "$stars" "$updated")"
   trimmed_desc="${desc}"
   (( ${#trimmed_desc} > 70 )) && trimmed_desc="${trimmed_desc:0:67}..."
   DISPLAY_LINES+=("${idx}  $(printf '%-45s' "$name")  ${DIM}${meta}${RESET}  ${trimmed_desc}")
@@ -380,8 +416,8 @@ if [[ "$HAS_FZF" == "true" ]]; then
   # Use fzf for multi-select. Strip ANSI from preview so fzf renders cleanly.
   FZF_INPUT="$(for i in "${!REPO_LINES[@]}"; do
     IFS=$'\t' read -r name _s _h vis lang stars updated desc <<<"${REPO_LINES[$i]}"
-    printf '%d\t%s\t[%s | %s | ⭐%s | %s]  %s\n' \
-      $((i+1)) "$name" "$vis" "$lang" "$stars" "$updated" "$desc"
+    printf '%d\t%s\t[%s | %s | %s%s | %s]  %s\n' \
+      $((i+1)) "$name" "$vis" "$lang" "$G_STAR" "$stars" "$updated" "$desc"
   done)"
 
   info "fzf opens next — TAB to toggle, Enter to confirm, Esc to cancel."
@@ -410,7 +446,7 @@ else
     printf '\n'
     for i in "${!DISPLAY_LINES[@]}"; do
       local mark=" "
-      [[ -n "${SELECTED_MAP[$i]:-}" ]] && mark="${GREEN}✓${RESET}"
+      [[ -n "${SELECTED_MAP[$i]:-}" ]] && mark="${GREEN}${G_OK}${RESET}"
       printf '  [%s] %s\n' "$mark" "${DISPLAY_LINES[$i]}"
     done
     printf '\n  %sSelected:%s %d / %d\n' "$BOLD" "$RESET" "${#SELECTED_MAP[@]}" "$REPO_COUNT"
@@ -507,8 +543,8 @@ fi
 ok "Destination: ${BOLD}${DEST_DIR}${RESET}"
 
 # Build the work list (skip already-present clones).
-PLAN_FILE="$(mktemp)"
-SKIP_FILE="$(mktemp)"
+PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/ghclone.XXXXXX")"
+SKIP_FILE="$(mktemp "${TMPDIR:-/tmp}/ghclone.XXXXXX")"
 trap 'rm -f "$PLAN_FILE" "$SKIP_FILE"' EXIT
 
 for i in "${SELECTED_INDICES[@]}"; do
@@ -554,21 +590,23 @@ if [[ "$ASSUME_YES" != "true" ]]; then
 fi
 
 # Clone in parallel with xargs. Each worker prints its own status.
-export PROTOCOL
+# Export the bits clone_one needs so the xargs subshells render consistently.
+export PROTOCOL GREEN RED RESET G_OK G_ERR TMPDIR
 clone_one() {
-  local name="$1" url="$2" target="$3"
-  if git clone --quiet "$url" "$target" 2>/tmp/.clone-err.$$; then
-    printf '  %s✓%s %s\n' $'\e[1;32m' $'\e[0m' "$name"
-    rm -f /tmp/.clone-err.$$
+  local name="$1" url="$2" target="$3" errf
+  errf="$(mktemp "${TMPDIR:-/tmp}/ghclone-err.XXXXXX")"
+  if git clone --quiet "$url" "$target" 2>"$errf"; then
+    printf '  %s%s%s %s\n' "$GREEN" "$G_OK" "$RESET" "$name"
+    rm -f "$errf"
   else
-    printf '  %s✗%s %s — %s\n' $'\e[1;31m' $'\e[0m' "$name" "$(cat /tmp/.clone-err.$$ 2>/dev/null | head -n1)"
-    rm -f /tmp/.clone-err.$$
+    printf '  %s%s%s %s — %s\n' "$RED" "$G_ERR" "$RESET" "$name" "$(head -n1 "$errf" 2>/dev/null)"
+    rm -f "$errf"
     return 1
   fi
 }
 export -f clone_one
 
-FAIL_FILE="$(mktemp)"
+FAIL_FILE="$(mktemp "${TMPDIR:-/tmp}/ghclone.XXXXXX")"
 trap 'rm -f "$PLAN_FILE" "$SKIP_FILE" "$FAIL_FILE"' EXIT
 
 printf '\n'
@@ -583,9 +621,15 @@ done < "$PLAN_FILE" \
 FAIL_COUNT=$(wc -l < "$FAIL_FILE" | tr -d ' ')
 SUCCESS_COUNT=$((PLAN_COUNT - FAIL_COUNT))
 
-printf '\n%s╭─────────────────────────────────────────────╮%s\n' "$GREEN" "$RESET"
-printf '%s│              clone run complete             │%s\n' "$GREEN" "$RESET"
-printf '%s╰─────────────────────────────────────────────╯%s\n\n' "$GREEN" "$RESET"
+if [[ "$UNICODE" == true ]]; then
+  printf '\n%s╭─────────────────────────────────────────────╮%s\n' "$GREEN" "$RESET"
+  printf '%s│              clone run complete             │%s\n' "$GREEN" "$RESET"
+  printf '%s╰─────────────────────────────────────────────╯%s\n\n' "$GREEN" "$RESET"
+else
+  printf '\n%s+---------------------------------------------+%s\n' "$GREEN" "$RESET"
+  printf '%s|              clone run complete             |%s\n' "$GREEN" "$RESET"
+  printf '%s+---------------------------------------------+%s\n\n' "$GREEN" "$RESET"
+fi
 
 printf '  Destination    : %s\n' "$DEST_DIR"
 printf '  Protocol       : %s\n' "$PROTOCOL"
