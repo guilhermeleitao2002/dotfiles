@@ -66,6 +66,99 @@ order, right after the header row. To skip the disk-info block entirely:
 ./setup.sh --no-disk-info
 ```
 
+## ⌨ Keybinds
+
+The modifier is **Super** (the Windows key). All binds live in
+[`hyprland.conf`](hyprland/.config/hypr/hyprland.conf) — `bind = …` for normal
+shortcuts, `bindm = …` for mouse drags, `bindel = …` for held-down media keys,
+and `bindl = …` for media keys that should still fire when locked.
+
+> Note: Hyprland is a tiling WM, so there are no "tabs" at the window-manager
+> level. Each instance of an app is its own tiled window, and new ones are
+> launched via the app-launcher (`Super` + `R`) or a direct keybind below.
+
+### Launching apps
+
+| Shortcut | Action |
+| --- | --- |
+| `Super` + `T` | Open a new terminal window (`kitty`) |
+| `Super` + `R` | Open the app launcher (`wofi --show drun`) — type to launch anything |
+| `Super` + `E` | Open the file manager (`nautilus`) |
+| `Print` | Region screenshot, frozen, copied to clipboard (`hyprshot`) |
+| `Ctrl` + `Print` | Whole-window screenshot, frozen (`hyprshot`) |
+| `Super` + `L` | Lock screen (`hyprlock`) and suspend |
+
+### Window management
+
+| Shortcut | Action |
+| --- | --- |
+| `Super` + `Q` | Close the active window |
+| `Super` + `V` | Toggle floating mode for the active window |
+| `Super` + `P` | Toggle pseudotile (floating-sized window while tiled) |
+| `Super` + `J` | Toggle dwindle split direction (vertical ↔ horizontal) |
+| `Super` + `M` | Exit Hyprland (log out of the session) |
+| `Super` + drag left-click | Move the window |
+| `Super` + drag right-click | Resize the window |
+
+### Focus
+
+| Shortcut | Action |
+| --- | --- |
+| `Super` + `A` / `D` | Focus window to the left / right |
+| `Super` + `W` / `S` | Focus window above / below |
+
+### Workspaces
+
+| Shortcut | Action |
+| --- | --- |
+| `Super` + `1` … `0` | Switch to workspace 1–10 |
+| `Super` + `Shift` + `1` … `0` | Move active window to workspace 1–10 |
+| `Super` + scroll wheel | Cycle through existing workspaces |
+| `Super` + `Z` | Toggle the special workspace (scratchpad) |
+| `Super` + `Shift` + `Z` | Move active window to the special workspace |
+
+Selected apps autoland on specific workspaces:
+
+| App | Workspace |
+| --- | --- |
+| `kitty` (terminal) | 1 |
+| `firefox` | 2 |
+| `discord` | 3 |
+
+### Media & brightness keys
+
+Wired through `wpctl` (from `wireplumber`), `brightnessctl`, and `playerctl`:
+
+| Key | Action |
+| --- | --- |
+| `XF86AudioRaiseVolume` / `Lower` | Volume up / down (5%) |
+| `XF86AudioMute` | Toggle output mute |
+| `XF86AudioMicMute` | Toggle mic mute |
+| `XF86MonBrightnessUp` / `Down` | Brightness up / down (5%) |
+| `XF86AudioPlay` / `Pause` | Play / pause |
+| `XF86AudioNext` / `Prev` | Next / previous track |
+
+## 🖐 Touchpad gestures
+
+Since Hyprland 0.55, the legacy `gestures { workspace_swipe = true }` hyprlang
+options were removed in favor of a new lua-only gesture system. The bundled
+[`hyprland.conf`](hyprland/.config/hypr/hyprland.conf) keeps the tuning options
+(like `workspace_swipe_distance`) but no longer enables the swipe itself — the
+master switch and finger-count options now live only in lua.
+
+To re-enable a 2-finger horizontal workspace swipe, create
+`~/.config/hypr/hyprland.lua` and add:
+
+```lua
+hl.gesture({ fingers = 2, direction = "horizontal", action = "workspace" })
+```
+
+Other supported actions include `move`, `resize`, `close`, `fullscreen`,
+`float`, `special` (toggle a special workspace), and `cursor_zoom`. See the
+[Hyprland Gestures wiki](https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/)
+for the full list of fields (`fingers`, `direction`, `action`, `mods`, `scale`)
+and worked examples.
+
 ## 📂 Directory layout
 
 ```
