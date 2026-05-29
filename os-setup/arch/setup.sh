@@ -25,7 +25,7 @@ EOF
   printf '%s\n' "$RESET"
 }
 
-TOTAL_STEPS=7
+TOTAL_STEPS=8
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ─── argument parsing ────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ FILESYSTEMS=""
 NO_DISK_INFO=false
 NO_REBOOT=false
 SKIP_THEME_GUI=false
+NO_SERVICES=false
 
 usage() {
   cat <<EOF
@@ -51,6 +52,10 @@ ${BOLD}usage:${RESET} $(basename "$0") [options]
       --skip-theme-gui          Don't launch nwg-look at the end (skip the
                                 interactive GTK theme picker).
 
+      --no-services             Don't install/enable the display manager
+                                (SDDM) or enable NetworkManager/Bluetooth.
+                                Useful in WSL or other headless contexts.
+
   -h, --help                    Show this help and exit.
 
 If --filesystems / --no-disk-info aren't given, the default WSL/LVM paths
@@ -64,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --no-disk-info)    NO_DISK_INFO=true; shift ;;
     --no-reboot)       NO_REBOOT=true; shift ;;
     --skip-theme-gui)  SKIP_THEME_GUI=true; shift ;;
+    --no-services)     NO_SERVICES=true; shift ;;
     -h|--help)         usage; exit 0 ;;
     *)                 printf '%sunknown option:%s %s\n' "$RED" "$RESET" "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -150,20 +156,54 @@ fi
 # ─── 4. install Hyprland desktop ecosystem + handy GUI apps ──────────────────
 step 4 "Installing Hyprland desktop ecosystem"
 DESKTOP_PKGS=(
+  # Hyprland core + the supporting Wayland services it can't run without
   hyprland hyprpaper hyprlock          # window manager + wallpaper + lockscreen
+  hyprpolkitagent                      # graphical sudo/auth prompts
+  xdg-desktop-portal-hyprland          # screenshots, screen sharing, file pickers
+  xdg-desktop-portal-gtk               # GTK portal backend (file pickers etc.)
+
+  # Bar, launcher, terminal, file managers
   waybar wofi                          # status bar + app launcher
   kitty                                # terminal
+  nautilus                             # file manager — referenced as $fileManager in hyprland.conf
+  thunar                               # secondary file manager
+
+  # GTK theming
   nwg-look                             # GTK theme picker
   catppuccin-gtk-theme-mocha           # GTK theme (AUR)
-  ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji  # fonts for waybar/kitty
-  # handy GUI apps you'll inevitably want
+
+  # Fonts (CJK added so non-Latin glyphs render in waybar/kitty/firefox)
+  ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji noto-fonts-cjk
+
+  # Audio stack — without PipeWire there's no sound, and wpctl (used by
+  # XF86Audio* keybinds in hyprland.conf) ships with wireplumber.
+  pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber
+
+  # Display manager (chosen during setup: SDDM defaulting to Hyprland)
+  sddm
+
+  # Networking — applet referenced by hyprland.conf via `exec-once = nm-applet`
+  networkmanager network-manager-applet
+
+  # Bluetooth
+  bluez bluez-utils blueman
+
+  # Wayland desktop utilities referenced by hyprland.conf
+  swaync                               # AUR — notification daemon (exec-once = swaync)
+  hyprshot                             # AUR — screenshots (PRINT keybinds)
+  grim slurp wl-clipboard              # screenshot/region/clipboard backends
+  brightnessctl playerctl numlockx     # XF86 brightness / media / numlockx keybinds
+
+  # Qt Wayland integration — without these, Qt apps fall back to XWayland or crash
+  qt5-wayland qt6-wayland
+
+  # GUI apps you'll inevitably want
   firefox                              # web browser
-  thunar                               # file manager
   vlc                                  # media player
   discord                              # chat
 )
 yay -S --needed --noconfirm "${DESKTOP_PKGS[@]}"
-ok "Installed: hyprland kitty waybar wofi hyprpaper hyprlock nwg-look + Catppuccin + fonts + firefox/thunar/vlc/discord"
+ok "Installed ${#DESKTOP_PKGS[@]} desktop packages (hyprland + portals + audio + DM + apps)"
 
 # ─── 5. install Oh My Zsh + plugins ──────────────────────────────────────────
 step 5 "Installing Oh My Zsh and plugins"
@@ -257,6 +297,48 @@ if getent passwd "$USER" | cut -d: -f7 | grep -qxF "$ZSH_BIN"; then
 else
   sudo chsh -s "$ZSH_BIN" "$USER"
   ok "Default shell set to $ZSH_BIN (takes effect on next login)"
+fi
+
+# ─── 8. enable system services + pin SDDM default session to Hyprland ───────
+step 8 "Enabling system services"
+if [[ "$NO_SERVICES" == "true" ]]; then
+  info "Skipping services step (--no-services)"
+else
+  enable_service() {
+    local svc=$1
+    if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+      ok "$svc already enabled"
+    else
+      sudo systemctl enable "$svc" >/dev/null
+      ok "Enabled $svc"
+    fi
+  }
+
+  enable_service NetworkManager.service
+  enable_service bluetooth.service
+
+  # If GDM is the currently-enabled display manager (e.g. GNOME was installed
+  # via archinstall), disable it before enabling SDDM — only one DM can hold
+  # display-manager.service at a time.
+  if systemctl is-enabled --quiet gdm.service 2>/dev/null; then
+    sudo systemctl disable gdm.service >/dev/null
+    info "Disabled gdm.service (SDDM will take over as the display manager)"
+  fi
+
+  enable_service sddm.service
+
+  # Pre-seed SDDM's per-user "last session" so the login screen lands on
+  # Hyprland by default. SDDM remembers the last selection on subsequent
+  # logins, so this only matters for the first boot after running the script.
+  sudo install -d -o sddm -g sddm -m 0755 /var/lib/sddm 2>/dev/null || \
+    sudo install -d -m 0755 /var/lib/sddm
+  sudo tee /var/lib/sddm/state.conf >/dev/null <<EOF
+[Last]
+Session=hyprland.desktop
+User=$USER
+EOF
+  sudo chown sddm:sddm /var/lib/sddm/state.conf 2>/dev/null || true
+  ok "SDDM default session pinned to Hyprland for $USER"
 fi
 
 # ─── done ────────────────────────────────────────────────────────────────────
